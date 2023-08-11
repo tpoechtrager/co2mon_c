@@ -154,6 +154,8 @@ void print_reading_with_timestamp(float temperature, uint16_t co2) {
     printf("  \"temperature\": %.2f,\n", temperature);
     printf("  \"co2\": %d\n", co2);
     printf("}\n");
+
+    fflush(stdout);
 }
 
 int main(int argc, char *argv[]) {
