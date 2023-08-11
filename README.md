@@ -28,6 +28,22 @@ Here's an example of the JSON output format from the program:
 - GCC (GNU Compiler Collection)
 - HIDAPI Library
 
+### Ubuntu and Debian
+
+You can install the HIDAPI library and GCC on Debian / Ubuntu using the following commands:
+
+```bash
+sudo apt-get update
+sudo apt-get install libhidapi-dev gcc
+```
+### Arch Linux
+
+To install the HIDAPI library and GCC on Arch Linux, you can use the following command:
+
+```bash
+sudo pacman -S hidapi gcc
+```
+
 ## Installation Instructions
 
 - Clone this repository:
@@ -81,9 +97,14 @@ Run the program:
   
 ##  Protocol Details
 
-The USB HID protocol is not documented, but is a superset of this one and was reverse-engineered before.
+The USB HID protocol is not documented, but is a superset of [this one][co2meters] and was [reverse-engineered][had] [before][revspace].
 
-The implementation was inspired by this one.
+The implementation was inspired by [this one][co2mon].
+
+[co2meters]: https://co2meters.com/Documentation/Other/AN_RAD_0301_USB_Communications_Revised8.pdf
+[co2mon]: https://github.com/dmage/co2mon/
+[had]: https://hackaday.io/project/5301/
+[revspace]: https://revspace.nl/CO2MeterHacking
   
 ##  License
 
