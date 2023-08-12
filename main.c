@@ -89,16 +89,15 @@ int read_one(hid_device *device, const uint8_t *key, Reading *reading) {
     return 0; // Return success code
 }
 
-int read_readings(hid_device *device, const uint8_t *key, Reading *reading, 
+int read_readings(hid_device *device, const uint8_t *key, Reading *reading,
                   const ReadingType *required_readings, size_t required_count) {
-    size_t received_count = 0;
 
     // Reset only the required readings to not received
     for (size_t i = 0; i < required_count; i++) {
         reading->received[required_readings[i]] = 0;
     }
 
-    while (received_count < required_count) {
+    while (1) {
         if (read_one(device, key, reading) != 0) {
             return 1; // Failure
         }
@@ -113,8 +112,8 @@ int read_readings(hid_device *device, const uint8_t *key, Reading *reading,
             }
         }
 
-        // Exit the parent loop if all_required_received is 1
-        if (all_required_received == 1) {
+        // Exit the loop if all required readings are received
+        if (all_required_received) {
             break;
         }
     }
