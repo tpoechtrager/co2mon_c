@@ -10,6 +10,7 @@
 #define VID 0x04d9
 #define PID 0xa052
 #define BUFFER_SIZE 8
+#define MAX_READING_COUNT 256
 #define TIMEOUT_MS 5000
 
 // Global flag to indicate if the program should exit
@@ -20,33 +21,20 @@ void handle_signal(int signal __attribute__((unused))) {
     exit_flag = 1;
 }
 
+typedef enum {
+    RELATIVE_HUMIDITY = 'A',
+    TEMPERATURE_KELVIN = 'B',
+    TEMPERATURE_FAHRENHEIT = 'F',
+    CO2_CONCENTRATION = 'P',
+    CO2_CONCENTRATION_UNCALIBRATED = 'q' // unsure
+    // BAROMETRIC_PRESSURE_R = 'R', // unsure
+    // BAROMETRIC_PRESSURE_V = 'V' // unsure
+} ReadingType;
+
 typedef struct {
-    float temperature;
-    uint16_t co2;
-    int temperature_received;
-    int co2_received;
+    uint16_t values[MAX_READING_COUNT];
+    uint8_t received[MAX_READING_COUNT];
 } Reading;
-
-void decode(uint8_t data[5], Reading *reading) {
-    if (data[4] != 0x0d) {
-        memset(reading, 0, sizeof(Reading));
-        return;
-    }
-
-    uint16_t value = (data[1] << 8) | data[2];
-
-    switch (data[0]) {
-        case 'B':
-            reading->temperature = (float)value * 0.0625 - 273.15;
-            reading->temperature_received = 1;
-            break;
-        case 'P':
-            reading->co2 = value;
-            reading->co2_received = 1;
-            break;
-        default:;
-    }
-}
 
 #define SWAP(a, b) do { a ^= b; b ^= a; a ^= b; } while (0)
 
@@ -74,6 +62,16 @@ void decrypt(uint8_t data[8], const uint8_t key[8]) {
     }
 }
 
+void decode(uint8_t data[5], Reading *reading) {
+    if (data[4] != 0x0d) {
+        return;
+    }
+
+    uint16_t value = (data[1] << 8) | data[2];
+    reading->values[data[0]] = value;
+    reading->received[data[0]] = 1;
+}
+
 int read_one(hid_device *device, const uint8_t *key, Reading *reading) {
     uint8_t data[BUFFER_SIZE];
     int read_result = hid_read_timeout(device, data, BUFFER_SIZE, TIMEOUT_MS);
@@ -91,22 +89,61 @@ int read_one(hid_device *device, const uint8_t *key, Reading *reading) {
     return 0; // Return success code
 }
 
-int read_temperature_and_co2(hid_device *device, const uint8_t *key, Reading *reading) {
-    reading->temperature_received = 0;
-    reading->co2_received = 0;
+int read_readings(hid_device *device, const uint8_t *key, Reading *reading, 
+                  const ReadingType *required_readings, size_t required_count) {
+    size_t received_count = 0;
 
-    while (!reading->temperature_received || !reading->co2_received) {
+    // Reset only the required readings to not received
+    for (size_t i = 0; i < required_count; i++) {
+        reading->received[required_readings[i]] = 0;
+    }
+
+    while (received_count < required_count) {
         if (read_one(device, key, reading) != 0) {
             return 1; // Failure
+        }
+
+        int all_required_received = 1;
+
+        // Loop through required_readings
+        for (size_t i = 0; i < required_count; i++) {
+            if (reading->received[required_readings[i]] == 0) {
+                all_required_received = 0; // If one hasn't been received, set to 0
+                break; // No need to continue checking if one hasn't been received
+            }
+        }
+
+        // Exit the parent loop if all_required_received is 1
+        if (all_required_received == 1) {
+            break;
         }
     }
 
     return 0; // Success
 }
 
-int parse_command_line_arguments(int argc, char *argv[], uint8_t *key) {
-    if (argc == 2) {
-        const char *key_string = argv[1];
+int parse_command_line_arguments(int argc, char *argv[], uint8_t *key, int *all_flag) {
+    const char *key_string = NULL;
+
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
+            printf("Usage: %s [options]\n", argv[0]);
+            printf("Options:\n");
+            printf("  --key <key>   Set the encryption key (16 hex characters)\n");
+            printf("  --all         Print all readings\n");
+            return 1; // Return to exit the program or continue as needed
+        } else if (strcmp(argv[i], "--key") == 0) {
+            if (i + 1 < argc) {
+                key_string = argv[i + 1];
+                i++; // Skip the next argument since it's the key value
+            }
+        } else if (strcmp(argv[i], "--all") == 0) {
+            *all_flag = 1;
+        }
+    }
+
+    // Parse the key if provided
+    if (key_string) {
         int length = strlen(key_string);
 
         if (length != 16) {
@@ -137,58 +174,141 @@ hid_device* initialize_device(uint8_t *key) {
     return device;
 }
 
-// Function to print readings as JSON with timestamp
-void print_reading_with_timestamp(float temperature, uint16_t co2) {
-    // Get current time
+
+
+void generate_timestamp_string(char *timestamp_buffer, size_t buffer_size) {
     time_t current_time;
     struct tm *time_info;
-    char time_buffer[80];
 
     time(&current_time);
     time_info = localtime(&current_time);
-    strftime(time_buffer, sizeof(time_buffer), "%Y-%m-%d %H:%M:%S", time_info);
-
-    // Print readings as JSON with timestamp
-    printf("{\n");
-    printf("  \"timestamp\": \"%s\",\n", time_buffer);
-    printf("  \"temperature\": %.2f,\n", temperature);
-    printf("  \"co2\": %d\n", co2);
-    printf("}\n");
-
-    fflush(stdout);
+    strftime(timestamp_buffer, buffer_size, "%Y-%m-%d %H:%M:%S", time_info);
 }
+
+void print_reading(const char *key, uint16_t value, int *printed_values) {
+    if (*printed_values > 0) {
+        printf(",");
+    }
+    printf("\n  \"%s\": %u", key, value);
+    (*printed_values)++;
+}
+
+void print_reading_float(const char *key, double value, int decimal_places, int *printed_values) {
+    if (*printed_values > 0) {
+        printf(",");
+    }
+    printf("\n  \"%s\": %.*f", key, decimal_places, value);
+    (*printed_values)++;
+}
+
+void print_known_reading(const Reading *reading, ReadingType type, const char *key, int *printed_values) {
+    if (reading->received[type]) {
+        print_reading(key, reading->values[type], printed_values);
+    }
+}
+
+void print_unknown_reading_value(const Reading *reading, int index, int *printed_values) {
+    if (*printed_values > 0) {
+        printf(",");
+    }
+    printf("\n  \"value_%c\": %u", index, reading->values[index]);
+    (*printed_values)++;
+}
+
+void print_all_reading_as_json(const Reading *reading) {
+    char time_buffer[80];
+    generate_timestamp_string(time_buffer, sizeof(time_buffer));
+
+    printf("{\n");
+    printf("  \"timestamp\": \"%s\"", time_buffer);
+
+    int printed_values = 1; // timestamp
+
+    print_reading("temperature_kelvin", reading->values[TEMPERATURE_KELVIN], &printed_values);
+    print_reading_float("temperature_celsius", reading->values[TEMPERATURE_KELVIN] * 0.0625 - 273.15, 4, &printed_values);
+    print_reading("co2", (double)reading->values[CO2_CONCENTRATION], &printed_values);
+
+    print_known_reading(reading, CO2_CONCENTRATION_UNCALIBRATED, "co2_uncalibrated(unsure)", &printed_values);
+    print_known_reading(reading, RELATIVE_HUMIDITY, "relative_humidity", &printed_values);
+    print_known_reading(reading, TEMPERATURE_FAHRENHEIT, "temperature_fahrenheit", &printed_values);
+
+    // Print other received values
+    for (int i = 0; i < MAX_READING_COUNT; i++) {
+        if (reading->received[i] && i != RELATIVE_HUMIDITY && i != TEMPERATURE_KELVIN &&
+            i != TEMPERATURE_FAHRENHEIT && i != CO2_CONCENTRATION && i != CO2_CONCENTRATION_UNCALIBRATED) {
+            print_unknown_reading_value(reading, i, &printed_values);
+        }
+    }
+
+    printf("\n}\n");
+    fflush(stdout); // Make sure the output is printed immediately
+}
+
+void print_reading_as_json(const Reading *reading) {
+    char time_buffer[80];
+    generate_timestamp_string(time_buffer, sizeof(time_buffer));
+
+    printf("{\n");
+    printf("  \"timestamp\": \"%s\"", time_buffer);
+
+    int printed_values = 1; // timestamp
+
+    print_reading_float("temperature", reading->values[TEMPERATURE_KELVIN] * 0.0625 - 273.15, 4, &printed_values);
+    print_reading("co2", (double)reading->values[CO2_CONCENTRATION], &printed_values);
+
+    printf("\n}\n");
+    fflush(stdout); // Flush stdout buffer to ensure immediate print
+}
+
+
 
 int main(int argc, char *argv[]) {
     uint8_t key[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+    int all_flag = 0;
 
-    if (parse_command_line_arguments(argc, argv, key) != 0) {
+    if (parse_command_line_arguments(argc, argv, key, &all_flag) != 0) {
+        return 1;
+    }
+
+    if (hid_init() != 0) {
+        fprintf(stderr, "Failed to initialize HIDAPI library.\n");
         return 1;
     }
 
     hid_device *device = initialize_device(key);
-    if (device == NULL) {
+    if (!device) {
+        hid_exit();
         return 1;
     }
 
-    usleep(100000); // Delay for 100 ms
+    usleep(100000); // Sleep for 100 ms after successful initialization
 
-    // Set up the signal handler for SIGINT
+    // Register signal handlers
     signal(SIGINT, handle_signal);
+    signal(SIGTERM, handle_signal);
+
+    ReadingType required_readings[] = {TEMPERATURE_KELVIN, CO2_CONCENTRATION};
+    Reading reading;
+    memset(&reading, 0, sizeof(Reading));
 
     while (!exit_flag) {
-        Reading reading;
-        memset(&reading, 0, sizeof(reading));
+        int result = read_readings(device, key, &reading, required_readings, sizeof(required_readings) / sizeof(ReadingType));
 
-        if (read_temperature_and_co2(device, key, &reading) != 0) {
+        if (result != 0) {
             fprintf(stderr, "Failed to read valid readings from the device.\n");
             hid_close(device);
+            hid_exit();
             return 1;
         }
 
-        // Call the print function with readings and timestamp
-        print_reading_with_timestamp(reading.temperature, reading.co2);
+        if (all_flag) {
+            print_all_reading_as_json(&reading);
+        } else {
+            print_reading_as_json(&reading);
+        }
     }
 
     hid_close(device);
+    hid_exit();
     return 0;
 }

@@ -23,6 +23,29 @@ Here's an example of the JSON output format from the program:
 }
 ```
 
+## Example Output with --all
+
+Here's an example of the JSON output format when using the `--all` command-line switch:
+
+```json
+{
+  "timestamp": "2023-08-11 16:51:18",
+  "relative_humidity": 0,
+  "temperature_kelvin": 4736,
+  "temperature_fahrenheit": 0,
+  "co2_concentration": 916,
+  "co2_concentration_uncalibrated(unsure)": 897,
+  "value_C": 3248,
+  "value_O": 7064,
+  "value_R": 11801,
+  "value_V": 11828,
+  "value_W": 7863,
+  "value_m": 3971,
+  "value_n": 19566,
+  "value_q": 843
+}
+```
+
 ## Prerequisites
 
 - GCC (GNU Compiler Collection)
@@ -70,6 +93,16 @@ Run the compiled executable:
 The program will read data from the Air Control USB device and display temperature and CO2 concentration in JSON format.
 
 Press Ctrl+C to stop the program.
+
+## Available Command-Line Switches
+
+The available command-line switches are:
+
+```bash
+    --help: Display help and usage information.
+    --key <key>: Set the encryption key (16 characters in hexadecimal format). Usually not needed.
+    --all: Print all available readings as JSON.
+```
 
 ## Setting Permissions
 
