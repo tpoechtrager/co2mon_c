@@ -29,20 +29,19 @@ Here's an example of the JSON output format when using the `--all` command-line 
 
 ```json
 {
-  "timestamp": "2023-08-11 16:51:18",
+  "timestamp": "2023-08-12 22:45:09",
+  "temperature_kelvin": 4727,
+  "temperature_celsius": 22.2875,
+  "co2": 551,
+  "co2_uncalibrated(unsure)": 480,
   "relative_humidity": 0,
-  "temperature_kelvin": 4736,
-  "temperature_fahrenheit": 0,
-  "co2_concentration": 916,
-  "co2_concentration_uncalibrated(unsure)": 897,
-  "value_C": 3248,
-  "value_O": 7064,
-  "value_R": 11801,
-  "value_V": 11828,
-  "value_W": 7863,
-  "value_m": 3971,
-  "value_n": 19566,
-  "value_q": 843
+  "value_C": 3159,
+  "value_O": 6901,
+  "value_R": 11808,
+  "value_V": 11834,
+  "value_W": 7870,
+  "value_m": 3969,
+  "value_n": 20274
 }
 ```
 
